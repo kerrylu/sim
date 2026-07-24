@@ -26,7 +26,7 @@ const SUBFLOW_START_HANDLES = new Set(['loop-start-source', 'parallel-start-sour
 function getSourceHandleYOffset(block: BlockState, sourceHandle?: string | null): number {
   if (sourceHandle === 'error') {
     const blockHeight = block.height || BLOCK_DIMENSIONS.MIN_HEIGHT
-    return blockHeight - HANDLE_POSITIONS.ERROR_BOTTOM_OFFSET
+    return blockHeight
   }
 
   if (sourceHandle && SUBFLOW_START_HANDLES.has(sourceHandle)) {
@@ -52,14 +52,25 @@ function getSourceHandleYOffset(block: BlockState, sourceHandle?: string | null)
     }
   }
 
-  return HANDLE_POSITIONS.DEFAULT_Y_OFFSET
+  return getDefaultHandleYOffset(block)
+}
+
+/**
+ * Default handle Y for a block: regular cards anchor their side ports at the
+ * vertical center; subflow containers keep the fixed top offset.
+ */
+function getDefaultHandleYOffset(block: BlockState): number {
+  if (block.type === 'loop' || block.type === 'parallel') {
+    return HANDLE_POSITIONS.DEFAULT_Y_OFFSET
+  }
+  return (block.height || BLOCK_DIMENSIONS.MIN_HEIGHT) / 2
 }
 
 /**
  * Calculates the Y offset for a target handle based on block type and handle ID.
  */
-function getTargetHandleYOffset(_block: BlockState, _targetHandle?: string | null): number {
-  return HANDLE_POSITIONS.DEFAULT_Y_OFFSET
+function getTargetHandleYOffset(block: BlockState, _targetHandle?: string | null): number {
+  return getDefaultHandleYOffset(block)
 }
 
 /**
