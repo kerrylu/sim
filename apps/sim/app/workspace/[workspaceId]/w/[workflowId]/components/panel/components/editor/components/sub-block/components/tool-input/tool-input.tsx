@@ -2151,6 +2151,7 @@ export const ToolInput = memo(function ToolInput({
                             effectiveParamId={effectiveParamId}
                             toolType={tool.type}
                             toolParams={tool.params}
+                            dependencyContextValues={toolContextValues}
                             onParamChange={handleParamChange}
                             disabled={disabled}
                             canonicalToggle={canonicalToggleProp}

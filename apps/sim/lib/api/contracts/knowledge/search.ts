@@ -1,14 +1,19 @@
 import { z } from 'zod'
 import { DEFAULT_RERANKER_MODEL, rerankerModelSchema } from '@/lib/knowledge/reranker-models'
 
-export const knowledgeSearchTagFilterSchema = z.object({
-  tagName: z.string(),
-  tagSlot: z.string().optional(),
-  fieldType: z.enum(['text', 'number', 'date', 'boolean']).optional(),
-  operator: z.string().default('eq'),
-  value: z.union([z.string(), z.number(), z.boolean()]),
-  valueTo: z.union([z.string(), z.number()]).optional(),
-})
+export const knowledgeSearchTagFilterSchema = z
+  .object({
+    tagName: z.string().min(1).optional(),
+    tagId: z.string().min(1).optional(),
+    tagSlot: z.string().optional(),
+    fieldType: z.enum(['text', 'number', 'date', 'boolean']).optional(),
+    operator: z.string().default('eq'),
+    value: z.union([z.string(), z.number(), z.boolean()]),
+    valueTo: z.union([z.string(), z.number()]).optional(),
+  })
+  .refine((filter) => Boolean(filter.tagName) !== Boolean(filter.tagId), {
+    message: 'Each tag filter must include exactly one of tagName or tagId',
+  })
 
 export const knowledgeSearchBodySchema = z
   .object({

@@ -63,6 +63,7 @@ export interface UpdateTagDefinitionData {
 
 export interface StructuredFilter {
   tagName?: string
+  tagId?: string
   tagSlot: string
   fieldType: string
   operator: string

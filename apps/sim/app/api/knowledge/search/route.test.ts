@@ -700,8 +700,8 @@ describe('Knowledge Search API Route', () => {
 
   describe('Optional Query Search', () => {
     const mockTagDefinitions = [
-      { tagSlot: 'tag1', displayName: 'category', fieldType: 'text' },
-      { tagSlot: 'tag2', displayName: 'priority', fieldType: 'text' },
+      { id: 'tag-category', tagSlot: 'tag1', displayName: 'category', fieldType: 'text' },
+      { id: 'tag-priority', tagSlot: 'tag2', displayName: 'priority', fieldType: 'text' },
     ]
 
     const mockTaggedResults = [
@@ -771,6 +771,268 @@ describe('Knowledge Search API Route', () => {
         ],
       })
     })
+
+    it('should resolve tag IDs and derive each filter type and slot server-side', async () => {
+      const tagOnlyData = {
+        knowledgeBaseIds: 'kb-123',
+        tagFilters: [
+          { tagId: 'tag-text', value: 'api', fieldType: 'boolean', operator: 'contains' },
+          {
+            tagId: 'tag-number',
+            value: 10,
+            valueTo: 20,
+            fieldType: 'text',
+            operator: 'between',
+          },
+          { tagId: 'tag-date', value: '2026-07-27', fieldType: 'text', operator: 'lte' },
+          { tagId: 'tag-boolean', value: true, fieldType: 'number', operator: 'eq' },
+        ],
+        topK: 10,
+      }
+      const tagDefinitions = [
+        { id: 'tag-text', tagSlot: 'tag1', displayName: 'category', fieldType: 'text' },
+        { id: 'tag-number', tagSlot: 'number1', displayName: 'score', fieldType: 'number' },
+        { id: 'tag-date', tagSlot: 'date1', displayName: 'published', fieldType: 'date' },
+        { id: 'tag-boolean', tagSlot: 'boolean1', displayName: 'verified', fieldType: 'boolean' },
+      ]
+
+      mockCheckKnowledgeBaseAccess.mockResolvedValue({
+        hasAccess: true,
+        knowledgeBase: {
+          id: 'kb-123',
+          userId: 'user-123',
+          name: 'Test KB',
+          deletedAt: null,
+          embeddingModel: 'text-embedding-3-small',
+        },
+      })
+      mockGetDocumentTagDefinitions.mockResolvedValue(tagDefinitions)
+      mockHandleTagOnlySearch.mockResolvedValue([])
+
+      const req = createMockRequest('POST', tagOnlyData)
+      const response = await POST(req)
+
+      expect(response.status).toBe(200)
+      expect(mockHandleTagOnlySearch).toHaveBeenCalledWith({
+        knowledgeBaseIds: ['kb-123'],
+        topK: 10,
+        structuredFilters: [
+          {
+            tagSlot: 'tag1',
+            fieldType: 'text',
+            operator: 'contains',
+            value: 'api',
+            valueTo: undefined,
+          },
+          {
+            tagSlot: 'number1',
+            fieldType: 'number',
+            operator: 'between',
+            value: 10,
+            valueTo: 20,
+          },
+          {
+            tagSlot: 'date1',
+            fieldType: 'date',
+            operator: 'lte',
+            value: '2026-07-27',
+            valueTo: undefined,
+          },
+          {
+            tagSlot: 'boolean1',
+            fieldType: 'boolean',
+            operator: 'eq',
+            value: true,
+            valueTo: undefined,
+          },
+        ],
+      })
+    })
+
+    it('should reject a tag ID that does not belong to the selected knowledge base', async () => {
+      mockCheckKnowledgeBaseAccess.mockResolvedValue({
+        hasAccess: true,
+        knowledgeBase: {
+          id: 'kb-123',
+          userId: 'user-123',
+          name: 'Test KB',
+          deletedAt: null,
+          embeddingModel: 'text-embedding-3-small',
+        },
+      })
+      mockGetDocumentTagDefinitions.mockResolvedValue(mockTagDefinitions)
+
+      const req = createMockRequest('POST', {
+        knowledgeBaseIds: 'kb-123',
+        tagFilters: [{ tagId: 'tag-from-another-kb', value: 'api', operator: 'eq' }],
+      })
+      const response = await POST(req)
+      const data = await response.json()
+
+      expect(response.status).toBe(400)
+      expect(data.error).toContain(
+        'Tag IDs not found in the selected knowledge base: tag-from-another-kb'
+      )
+      expect(mockHandleTagOnlySearch).not.toHaveBeenCalled()
+    })
+
+    it('should reject ambiguous filters containing both tag name and tag ID', async () => {
+      const req = createMockRequest('POST', {
+        knowledgeBaseIds: 'kb-123',
+        tagFilters: [
+          {
+            tagName: 'category',
+            tagId: 'tag-category',
+            value: 'api',
+            operator: 'eq',
+          },
+        ],
+      })
+      const response = await POST(req)
+      const data = await response.json()
+
+      expect(response.status).toBe(400)
+      expect(data.error).toBe('Validation error')
+      expect(data.details).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            message: 'Each tag filter must include exactly one of tagName or tagId',
+          }),
+        ])
+      )
+    })
+
+    it('should reject a configured filter whose dynamic tag ID resolved empty', async () => {
+      const req = createMockRequest('POST', {
+        knowledgeBaseIds: 'kb-123',
+        query: 'api',
+        tagFilters: [{ value: 'api', operator: 'eq' }],
+      })
+      const response = await POST(req)
+      const data = await response.json()
+
+      expect(response.status).toBe(400)
+      expect(data.error).toBe('Validation error')
+      expect(data.details).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            message: 'Each tag filter must include exactly one of tagName or tagId',
+          }),
+        ])
+      )
+    })
+
+    it('should reject tag ID filters across multiple knowledge bases', async () => {
+      mockCheckKnowledgeBaseAccess.mockImplementation(async (knowledgeBaseId: string) => ({
+        hasAccess: true,
+        knowledgeBase: {
+          id: knowledgeBaseId,
+          userId: 'user-123',
+          name: 'Test KB',
+          deletedAt: null,
+          embeddingModel: 'text-embedding-3-small',
+        },
+      }))
+
+      const req = createMockRequest('POST', {
+        knowledgeBaseIds: ['kb-123', 'kb-456'],
+        tagFilters: [{ tagId: 'tag-category', value: 'api', operator: 'eq' }],
+      })
+      const response = await POST(req)
+      const data = await response.json()
+
+      expect(response.status).toBe(400)
+      expect(data.error).toContain('Tag ID filters can only search one knowledge base at a time')
+      expect(mockGetDocumentTagDefinitions).not.toHaveBeenCalled()
+    })
+
+    it('should validate the operator against the tag type resolved from the ID', async () => {
+      mockCheckKnowledgeBaseAccess.mockResolvedValue({
+        hasAccess: true,
+        knowledgeBase: {
+          id: 'kb-123',
+          userId: 'user-123',
+          name: 'Test KB',
+          deletedAt: null,
+          embeddingModel: 'text-embedding-3-small',
+        },
+      })
+      mockGetDocumentTagDefinitions.mockResolvedValue([
+        { id: 'tag-enabled', tagSlot: 'tag7', displayName: 'enabled', fieldType: 'boolean' },
+      ])
+
+      const req = createMockRequest('POST', {
+        knowledgeBaseIds: 'kb-123',
+        tagFilters: [{ tagId: 'tag-enabled', value: true, operator: 'contains' }],
+      })
+      const response = await POST(req)
+      const data = await response.json()
+
+      expect(response.status).toBe(400)
+      expect(data.error).toContain('Operator "contains" is not valid for boolean tag "enabled"')
+      expect(mockHandleTagOnlySearch).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      {
+        label: 'missing second value',
+        fieldType: 'number',
+        valueTo: undefined,
+        expectedError: 'requires a second value for the "between" operator',
+      },
+      {
+        label: 'invalid number',
+        fieldType: 'number',
+        valueTo: 'not-a-number',
+        expectedError: 'Invalid second value for "between"',
+      },
+      {
+        label: 'invalid date',
+        fieldType: 'date',
+        valueTo: '2026-02-31',
+        expectedError: 'Invalid second value for "between"',
+      },
+    ])(
+      'should reject $label in an ID-resolved between filter',
+      async ({ fieldType, valueTo, expectedError }) => {
+        mockCheckKnowledgeBaseAccess.mockResolvedValue({
+          hasAccess: true,
+          knowledgeBase: {
+            id: 'kb-123',
+            userId: 'user-123',
+            name: 'Test KB',
+            deletedAt: null,
+            embeddingModel: 'text-embedding-3-small',
+          },
+        })
+        mockGetDocumentTagDefinitions.mockResolvedValue([
+          {
+            id: 'tag-range',
+            tagSlot: fieldType === 'date' ? 'date1' : 'number1',
+            displayName: 'range',
+            fieldType,
+          },
+        ])
+
+        const req = createMockRequest('POST', {
+          knowledgeBaseIds: 'kb-123',
+          tagFilters: [
+            {
+              tagId: 'tag-range',
+              value: fieldType === 'date' ? '2026-01-01' : 1,
+              valueTo,
+              operator: 'between',
+            },
+          ],
+        })
+        const response = await POST(req)
+        const data = await response.json()
+
+        expect(response.status).toBe(400)
+        expect(data.error).toContain(expectedError)
+        expect(mockHandleTagOnlySearch).not.toHaveBeenCalled()
+      }
+    )
 
     it('should perform query + tag combination search', async () => {
       const combinedData = {

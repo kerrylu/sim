@@ -21,6 +21,7 @@ import { generateRequestId } from '@/lib/core/utils/request'
 import { withRouteHandler } from '@/lib/core/utils/with-route-handler'
 import { ALL_TAG_SLOTS } from '@/lib/knowledge/constants'
 import { getEmbeddingModelInfo } from '@/lib/knowledge/embedding-models'
+import { type FilterFieldType, getOperatorsForFieldType } from '@/lib/knowledge/filters/types'
 import { rerank } from '@/lib/knowledge/reranker'
 import { getDocumentTagDefinitions } from '@/lib/knowledge/tags/service'
 import { buildUndefinedTagsError, validateTagValue } from '@/lib/knowledge/tags/utils'
@@ -93,6 +94,17 @@ export const POST = withRouteHandler(async (request: NextRequest) => {
     let structuredFilters: StructuredFilter[] = []
 
     if (validatedData.tagFilters && accessibleKbIds.length > 0) {
+      const hasTagIdFilters = validatedData.tagFilters.some((filter) => Boolean(filter.tagId))
+      if (hasTagIdFilters && accessibleKbIds.length > 1) {
+        return NextResponse.json(
+          {
+            error:
+              'Tag ID filters can only search one knowledge base at a time. Search those knowledge bases separately.',
+          },
+          { status: 400 }
+        )
+      }
+
       const kbTagDefs = await Promise.all(
         accessibleKbIds.map(async (kbId) => ({
           kbId,
@@ -100,17 +112,39 @@ export const POST = withRouteHandler(async (request: NextRequest) => {
         }))
       )
 
-      const displayNameToTagDef: Record<string, { tagSlot: string; fieldType: string }> = {}
+      const resolvedTagDefinitions = new Map<
+        string,
+        { tagSlot: string; fieldType: FilterFieldType; displayName: string }
+      >()
+      const getFilterKey = (filter: { tagName?: string; tagId?: string }) =>
+        filter.tagId ? `id:${filter.tagId}` : `name:${filter.tagName}`
+
       for (const { kbId, tagDefs } of kbTagDefs) {
-        const perKbMap = new Map(
+        const perKbNameMap = new Map(
           tagDefs.map((def) => [
             def.displayName,
-            { tagSlot: def.tagSlot, fieldType: def.fieldType },
+            {
+              tagSlot: def.tagSlot,
+              fieldType: def.fieldType as FilterFieldType,
+              displayName: def.displayName,
+            },
+          ])
+        )
+        const perKbIdMap = new Map(
+          tagDefs.map((def) => [
+            def.id,
+            {
+              tagSlot: def.tagSlot,
+              fieldType: def.fieldType as FilterFieldType,
+              displayName: def.displayName,
+            },
           ])
         )
 
         for (const filter of validatedData.tagFilters) {
-          const current = perKbMap.get(filter.tagName)
+          const current = filter.tagId
+            ? perKbIdMap.get(filter.tagId)
+            : perKbNameMap.get(filter.tagName!)
           if (!current) {
             if (accessibleKbIds.length > 1) {
               return NextResponse.json(
@@ -123,7 +157,8 @@ export const POST = withRouteHandler(async (request: NextRequest) => {
             continue
           }
 
-          const existing = displayNameToTagDef[filter.tagName]
+          const filterKey = getFilterKey(filter)
+          const existing = resolvedTagDefinitions.get(filterKey)
           if (
             existing &&
             (existing.tagSlot !== current.tagSlot || existing.fieldType !== current.fieldType)
@@ -136,7 +171,7 @@ export const POST = withRouteHandler(async (request: NextRequest) => {
             )
           }
 
-          displayNameToTagDef[filter.tagName] = current
+          resolvedTagDefinitions.set(filterKey, current)
         }
 
         logger.debug(`[${requestId}] Loaded tag definitions for KB ${kbId}`, {
@@ -145,47 +180,98 @@ export const POST = withRouteHandler(async (request: NextRequest) => {
       }
 
       const undefinedTags: string[] = []
+      const invalidTagIds: string[] = []
       const typeErrors: string[] = []
+      const operatorErrors: string[] = []
 
       for (const filter of validatedData.tagFilters) {
-        const tagDef = displayNameToTagDef[filter.tagName]
+        const tagDef = resolvedTagDefinitions.get(getFilterKey(filter))
 
         if (!tagDef) {
-          undefinedTags.push(filter.tagName)
+          if (filter.tagId) {
+            invalidTagIds.push(filter.tagId)
+          } else if (filter.tagName) {
+            undefinedTags.push(filter.tagName)
+          }
           continue
         }
 
         const validationError = validateTagValue(
-          filter.tagName,
+          tagDef.displayName,
           String(filter.value),
           tagDef.fieldType
         )
         if (validationError) {
           typeErrors.push(validationError)
         }
+
+        const validOperators = getOperatorsForFieldType(tagDef.fieldType)
+        const operatorIsValid = validOperators.some(
+          (operator) => operator.value === filter.operator
+        )
+        if (!operatorIsValid) {
+          operatorErrors.push(
+            `Operator "${filter.operator}" is not valid for ${tagDef.fieldType} tag "${tagDef.displayName}"`
+          )
+        }
+
+        if (filter.tagId && operatorIsValid && filter.operator === 'between') {
+          const secondValueMissing =
+            filter.valueTo === undefined ||
+            (typeof filter.valueTo === 'string' && filter.valueTo.trim() === '')
+          if (secondValueMissing) {
+            typeErrors.push(
+              `Tag "${tagDef.displayName}" requires a second value for the "between" operator`
+            )
+          } else {
+            const secondValueError = validateTagValue(
+              tagDef.displayName,
+              String(filter.valueTo),
+              tagDef.fieldType
+            )
+            if (secondValueError) {
+              typeErrors.push(`Invalid second value for "between": ${secondValueError}`)
+            }
+          }
+        }
       }
 
-      if (undefinedTags.length > 0 || typeErrors.length > 0) {
+      if (
+        undefinedTags.length > 0 ||
+        invalidTagIds.length > 0 ||
+        typeErrors.length > 0 ||
+        operatorErrors.length > 0
+      ) {
         const errorParts: string[] = []
 
         if (undefinedTags.length > 0) {
           errorParts.push(buildUndefinedTagsError(undefinedTags))
         }
 
+        if (invalidTagIds.length > 0) {
+          errorParts.push(
+            `Tag IDs not found in the selected knowledge base: ${invalidTagIds.join(', ')}`
+          )
+        }
+
         if (typeErrors.length > 0) {
           errorParts.push(...typeErrors)
+        }
+
+        if (operatorErrors.length > 0) {
+          errorParts.push(...operatorErrors)
         }
 
         return NextResponse.json({ error: errorParts.join('\n') }, { status: 400 })
       }
 
       structuredFilters = validatedData.tagFilters.map((filter) => {
-        const tagDef = displayNameToTagDef[filter.tagName]!
+        const tagDef = resolvedTagDefinitions.get(getFilterKey(filter))!
         const tagSlot = tagDef.tagSlot
         const fieldType = tagDef.fieldType
 
         logger.debug(
-          `[${requestId}] Structured filter: ${filter.tagName} -> ${tagSlot} (${fieldType}) ${filter.operator} ${filter.value}`
+          `[${requestId}] Structured filter: ${filter.tagId ?? filter.tagName} -> ${tagSlot} (${fieldType}) ${filter.operator} ${filter.value}`
         )
 
         return {
