@@ -232,8 +232,12 @@ export function KnowledgeTagFilters({
         if (field === 'tagId') {
           const tagDef = tagDefinitions.find((t) => t.id === value)
           updated.tagSlot = tagDef?.tagSlot
-          if (tagDef) {
+          if (tagDef && f.tagId !== value) {
             updated.fieldType = tagDef.fieldType as FilterFieldType
+            const operators = getOperatorsForFieldType(updated.fieldType)
+            updated.operator = operators[0]?.value || 'eq'
+            updated.tagValue = ''
+            updated.valueTo = undefined
           }
         }
 
