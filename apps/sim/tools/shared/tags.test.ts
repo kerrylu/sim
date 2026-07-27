@@ -78,18 +78,10 @@ describe('tag filter parsing', () => {
     expect(isEmptyTagValue([{ tagId: 'tag-definition-id', tagValue: '' }])).toBe(false)
   })
 
-  it('preserves a configured filter whose dynamic tag ID resolved empty for API validation', () => {
+  it('ignores an unfinished filter whose identifier is still empty', () => {
     const filter = { tagName: '', tagId: '', tagValue: 'api', operator: 'eq' }
 
-    expect(isEmptyTagValue([filter])).toBe(false)
-    expect(parseTagFilters([filter])).toEqual([
-      {
-        tagSlot: '',
-        fieldType: 'text',
-        operator: 'eq',
-        value: 'api',
-        valueTo: undefined,
-      },
-    ])
+    expect(isEmptyTagValue([filter])).toBe(true)
+    expect(parseTagFilters([filter])).toEqual([])
   })
 })

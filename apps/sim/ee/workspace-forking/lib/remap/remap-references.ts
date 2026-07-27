@@ -457,23 +457,12 @@ export function remapToolBlockResources(
   )
   const toolBlockSubBlocks = (opts.blockConfigs?.[tool.type] ?? getBlock(tool.type))?.subBlocks
   const gates = createCanonicalModeGates(toolBlockSubBlocks, toolValues, scopedModes)
-  const isActiveManualCanonicalKey = (paramKey: string): boolean => {
-    const pairConfigs =
-      toolBlockSubBlocks?.filter((config) => config.canonicalParamId === paramKey) ?? []
-    const hasRawAdvancedValue = pairConfigs.some(
-      (config) =>
-        config.mode === 'advanced' && config.id !== paramKey && isNonEmptyValue(params[config.id])
-    )
-    return pairConfigs.length > 0 && gates.isAdvancedActiveGroup(paramKey) && !hasRawAdvancedValue
-  }
 
   // Clear DORMANT member keys first: a stale inactive value must not survive the copy (and must
   // never be recorded). Not a dependent-clear seed - the pair's ACTIVE member carries the live
-  // value, and only ITS remap clears dependents. A key matching both a basic member id and the
-  // pair's canonical parameter holds the live advanced value in nested tool storage.
+  // value, and only ITS remap clears dependents.
   for (const paramKey of Object.keys(params)) {
     if (!gates.isDormantMember(paramKey)) continue
-    if (isActiveManualCanonicalKey(paramKey)) continue
     const currentValue = params[paramKey]
     if (currentValue == null || currentValue === '') continue
     setParam(paramKey, '')

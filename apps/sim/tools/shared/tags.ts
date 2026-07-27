@@ -27,14 +27,7 @@ interface TagFilterEntry {
 function isEmptyTagEntry(entry: Record<string, unknown>): boolean {
   const hasTagName = typeof entry.tagName === 'string' && entry.tagName.trim().length > 0
   const hasTagId = typeof entry.tagId === 'string' && entry.tagId.trim().length > 0
-  if (hasTagName || hasTagId) return false
-
-  if ('tagValue' in entry) {
-    if (entry.tagValue === undefined || entry.tagValue === null) return true
-    return typeof entry.tagValue === 'string' ? entry.tagValue.trim().length === 0 : false
-  }
-
-  return true
+  return !hasTagName && !hasTagId
 }
 
 /**
@@ -149,13 +142,11 @@ export function parseTagFilters(value: unknown): StructuredFilter[] {
       const hasTagName = typeof f.tagName === 'string' && f.tagName.trim().length > 0
       const hasTagId = typeof f.tagId === 'string' && f.tagId.trim().length > 0
       if (f.fieldType === 'boolean') {
-        return (
-          f.tagValue !== undefined && (hasTagName || hasTagId || 'tagName' in f || 'tagId' in f)
-        )
+        return f.tagValue !== undefined && (hasTagName || hasTagId)
       }
       if (f.tagValue === undefined || f.tagValue === null) return false
       if (typeof f.tagValue === 'string' && f.tagValue.trim().length === 0) return false
-      return hasTagName || hasTagId || 'tagName' in f || 'tagId' in f
+      return hasTagName || hasTagId
     })
     .map((filter) => {
       const tagId =

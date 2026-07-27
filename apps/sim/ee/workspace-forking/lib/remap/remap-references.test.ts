@@ -1570,7 +1570,8 @@ describe('canonical mode policy (fork/promote)', () => {
         toolId: 'knowledge_search',
         params: {
           knowledgeBaseId: 'kb-src',
-          tagFilters: filterValue,
+          tagFilters: '',
+          manualTagFilters: filterValue,
         },
       },
       {
@@ -1588,7 +1589,8 @@ describe('canonical mode policy (fork/promote)', () => {
 
     expect(result.params).toEqual({
       knowledgeBaseId: 'kb-dst',
-      tagFilters: expected,
+      tagFilters: '',
+      manualTagFilters: expected,
     })
   })
 
