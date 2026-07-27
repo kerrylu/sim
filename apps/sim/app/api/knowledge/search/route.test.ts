@@ -1034,6 +1034,59 @@ describe('Knowledge Search API Route', () => {
       }
     )
 
+    it.each([
+      {
+        label: 'missing second value',
+        valueTo: undefined,
+        expectedError: 'requires a second value for the "between" operator',
+      },
+      {
+        label: 'invalid second value',
+        valueTo: 'not-a-number',
+        expectedError: 'Invalid second value for "between"',
+      },
+    ])(
+      'should reject $label in a name-resolved between filter',
+      async ({ valueTo, expectedError }) => {
+        mockCheckKnowledgeBaseAccess.mockResolvedValue({
+          hasAccess: true,
+          knowledgeBase: {
+            id: 'kb-123',
+            userId: 'user-123',
+            name: 'Test KB',
+            deletedAt: null,
+            embeddingModel: 'text-embedding-3-small',
+          },
+        })
+        mockGetDocumentTagDefinitions.mockResolvedValue([
+          {
+            id: 'tag-range',
+            tagSlot: 'number1',
+            displayName: 'range',
+            fieldType: 'number',
+          },
+        ])
+
+        const req = createMockRequest('POST', {
+          knowledgeBaseIds: 'kb-123',
+          tagFilters: [
+            {
+              tagName: 'range',
+              value: 1,
+              valueTo,
+              operator: 'between',
+            },
+          ],
+        })
+        const response = await POST(req)
+        const data = await response.json()
+
+        expect(response.status).toBe(400)
+        expect(data.error).toContain(expectedError)
+        expect(mockHandleTagOnlySearch).not.toHaveBeenCalled()
+      }
+    )
+
     it('should perform query + tag combination search', async () => {
       const combinedData = {
         knowledgeBaseIds: 'kb-123',

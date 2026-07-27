@@ -232,13 +232,9 @@ export function KnowledgeTagFilters({
         if (field === 'tagId') {
           const tagDef = tagDefinitions.find((t) => t.id === value)
           updated.tagSlot = tagDef?.tagSlot
-          updated.fieldType = (tagDef?.fieldType || 'text') as FilterFieldType
-          const operators = tagDef
-            ? getOperatorsForFieldType(updated.fieldType)
-            : ALL_OPERATOR_OPTIONS
-          updated.operator = operators[0]?.value || 'eq'
-          updated.tagValue = ''
-          updated.valueTo = undefined
+          if (tagDef) {
+            updated.fieldType = tagDef.fieldType as FilterFieldType
+          }
         }
 
         // When field type changes, reset operator and value
@@ -403,10 +399,6 @@ export function KnowledgeTagFilters({
                   ...candidate,
                   tagId: newValue,
                   tagSlot: undefined,
-                  fieldType: 'text' as const,
-                  operator: 'eq',
-                  tagValue: '',
-                  valueTo: undefined,
                 }
               : candidate
           )

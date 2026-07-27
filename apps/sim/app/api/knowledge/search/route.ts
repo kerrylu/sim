@@ -215,7 +215,7 @@ export const POST = withRouteHandler(async (request: NextRequest) => {
           )
         }
 
-        if (filter.tagId && operatorIsValid && filter.operator === 'between') {
+        if (operatorIsValid && filter.operator === 'between') {
           const secondValueMissing =
             filter.valueTo === undefined ||
             (typeof filter.valueTo === 'string' && filter.valueTo.trim() === '')
