@@ -131,7 +131,8 @@ export function KnowledgeTagFilters({
       })),
     [currentValue]
   )
-  const filters: TagFilter[] = parsedFilters.length > 0 ? parsedFilters : [createDefaultFilter()]
+  const defaultFilter = useMemo(createDefaultFilter, [])
+  const filters: TagFilter[] = parsedFilters.length > 0 ? parsedFilters : [defaultFilter]
   const isReadOnly = isPreview || disabled
   const usesTagIds = subBlock.mode === 'advanced'
   const getResolvedTagDefinition = (filter: TagFilter) =>

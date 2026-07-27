@@ -5,8 +5,11 @@ import { act, type ChangeEvent } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { mockSetStoreValue } = vi.hoisted(() => ({
+const { mockSetStoreValue, mockStoreState } = vi.hoisted(() => ({
   mockSetStoreValue: vi.fn(),
+  mockStoreState: {
+    value: null as string | null,
+  },
 }))
 
 const initialFilters = [
@@ -41,22 +44,34 @@ vi.mock(
 
 vi.mock(
   '@/app/workspace/[workspaceId]/w/[workflowId]/components/panel/components/editor/components/sub-block/hooks/use-sub-block-input',
-  () => ({
-    useSubBlockInput: () => ({
-      fieldHelpers: {
-        getFieldState: () => ({ showTags: false }),
-        createFieldHandlers: (_key: string, _value: string, onChange: (value: string) => void) => ({
-          onChange: (event: ChangeEvent<HTMLInputElement>) => onChange(event.target.value),
-          onKeyDown: vi.fn(),
-          onDrop: vi.fn(),
-          onDragOver: vi.fn(),
-          onFocus: vi.fn(),
-        }),
-        createTagSelectHandler: vi.fn(),
-        hideFieldDropdowns: vi.fn(),
+  async () => {
+    const { useState } = await import('react')
+
+    return {
+      useSubBlockInput: () => {
+        const [, setFocusCount] = useState(0)
+
+        return {
+          fieldHelpers: {
+            getFieldState: () => ({ showTags: false }),
+            createFieldHandlers: (
+              _key: string,
+              _value: string,
+              onChange: (value: string) => void
+            ) => ({
+              onChange: (event: ChangeEvent<HTMLInputElement>) => onChange(event.target.value),
+              onKeyDown: vi.fn(),
+              onDrop: vi.fn(),
+              onDragOver: vi.fn(),
+              onFocus: () => setFocusCount((count) => count + 1),
+            }),
+            createTagSelectHandler: vi.fn(),
+            hideFieldDropdowns: vi.fn(),
+          },
+        }
       },
-    }),
-  })
+    }
+  }
 )
 
 vi.mock(
@@ -90,7 +105,7 @@ vi.mock('@/hooks/kb/use-tag-selection', () => ({
 vi.mock(
   '@/app/workspace/[workspaceId]/w/[workflowId]/components/panel/components/editor/components/sub-block/hooks/use-sub-block-value',
   () => ({
-    useSubBlockValue: () => [JSON.stringify(initialFilters), mockSetStoreValue],
+    useSubBlockValue: () => [mockStoreState.value, mockSetStoreValue],
   })
 )
 
@@ -104,6 +119,7 @@ describe('KnowledgeTagFilters Tag ID editing', () => {
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
+    mockStoreState.value = JSON.stringify(initialFilters)
     mockSetStoreValue.mockClear()
   })
 
@@ -164,5 +180,29 @@ describe('KnowledgeTagFilters Tag ID editing', () => {
       tagValue: '',
     })
     expect(resolvedFilter.valueTo).toBeUndefined()
+  })
+
+  it('keeps a brand-new Tag ID input focused and accepts its first pasted value', async () => {
+    mockStoreState.value = null
+    const input = await renderTagFilters()
+    expect(input).not.toBeNull()
+
+    await act(async () => {
+      input?.focus()
+    })
+
+    const focusedInput = container.querySelector<HTMLInputElement>(
+      'input[placeholder="Enter tag ID"]'
+    )
+    expect(focusedInput).toBe(input)
+    expect(document.activeElement).toBe(input)
+
+    const pastedFilter = await changeTagId(focusedInput as HTMLInputElement, 'tag-text')
+    expect(pastedFilter).toMatchObject({
+      tagId: 'tag-text',
+      tagSlot: 'tag1',
+      fieldType: 'text',
+      operator: 'eq',
+    })
   })
 })
