@@ -44,6 +44,7 @@ vi.mock('@sim/emcn', async () => {
       Trigger: Container,
       Content: Container,
     },
+    Duplicate: (props: React.SVGProps<SVGSVGElement>) => <svg data-icon='duplicate' {...props} />,
     Trash: (props: React.SVGProps<SVGSVGElement>) => <svg data-icon='trash' {...props} />,
     useCopyToClipboard: () => {
       const [copied, setCopied] = useState(false)
@@ -125,6 +126,7 @@ describe('BaseTagsModal tag ID copy control', () => {
 
     expect(copyButton).toBeTruthy()
     expect(deleteButton).toBeTruthy()
+    expect(copyButton.querySelector('[data-icon="duplicate"]')).toBeTruthy()
     expect(
       copyButton.compareDocumentPosition(deleteButton) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy()

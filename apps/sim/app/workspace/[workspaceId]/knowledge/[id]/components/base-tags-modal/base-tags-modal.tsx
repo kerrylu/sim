@@ -12,13 +12,14 @@ import {
   ChipModalFooter,
   ChipModalHeader,
   type ComboboxOption,
+  Duplicate,
   handleKeyboardActivation,
   Tooltip,
   Trash,
   useCopyToClipboard,
 } from '@sim/emcn'
 import { createLogger } from '@sim/logger'
-import { Check, Clipboard } from 'lucide-react'
+import { Check } from 'lucide-react'
 import type { TagUsageData } from '@/lib/api/contracts/knowledge'
 import { SUPPORTED_FIELD_TYPES, TAG_SLOT_CONFIG } from '@/lib/knowledge/constants'
 import { getDocumentIcon } from '@/app/workspace/[workspaceId]/knowledge/components'
@@ -317,7 +318,7 @@ export function BaseTagsModal({ open, onOpenChange, knowledgeBaseId }: BaseTagsM
                             {copied && copiedTagId === tag.id ? (
                               <Check className='size-3 text-[var(--text-success)]' />
                             ) : (
-                              <Clipboard className='size-3' />
+                              <Duplicate className='size-3' />
                             )}
                           </Button>
                         </Tooltip.Trigger>
