@@ -192,17 +192,10 @@ export function Home({ chatId, userName, userId, tableViewsEnabled }: HomeProps)
   const { isPending: isChatHistoryPending } = useMothershipChatHistory(chatId)
   const { mutate: markRead } = useMarkMothershipChatRead(workspaceId)
 
-  const { mothershipRef, handleResizePointerDown, clearWidth } = useMothershipResize()
-
   const [isResourceCollapsed, setIsResourceCollapsed] = useState(true)
   const [skipResourceTransition, setSkipResourceTransition] = useState(false)
   const isResourceCollapsedRef = useRef(isResourceCollapsed)
   isResourceCollapsedRef.current = isResourceCollapsed
-
-  const collapseResource = useCallback(() => {
-    clearWidth()
-    setIsResourceCollapsed(true)
-  }, [clearWidth])
 
   function handleResourceEvent() {
     if (isResourceCollapsedRef.current) {
@@ -217,6 +210,7 @@ export function Home({ chatId, userName, userId, tableViewsEnabled }: HomeProps)
     sendMessage,
     stopGeneration,
     resolvedChatId,
+    desktopScopeId,
     resources,
     activeResourceId,
     setActiveResourceId,
@@ -249,6 +243,13 @@ export function Home({ chatId, userName, userId, tableViewsEnabled }: HomeProps)
       },
     })
   )
+
+  const { mothershipRef, handleResizePointerDown, clearWidth } = useMothershipResize(desktopScopeId)
+
+  const collapseResource = useCallback(() => {
+    clearWidth()
+    setIsResourceCollapsed(true)
+  }, [clearWidth])
 
   useEffect(() => {
     wasSendingRef.current = false
@@ -519,6 +520,7 @@ export function Home({ chatId, userName, userId, tableViewsEnabled }: HomeProps)
             ref={mothershipRef}
             workspaceId={workspaceId}
             chatId={resolvedChatId}
+            desktopScopeId={desktopScopeId}
             resources={resources}
             activeResourceId={activeResourceId}
             isCollapsed={isResourceCollapsed}
