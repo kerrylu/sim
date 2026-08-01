@@ -16,6 +16,7 @@ import { USER_TABLE_ROWS_SQL_NAME } from '@/lib/table/constants'
 import { TableLockedError } from '@/lib/table/mutation-locks'
 import { isTablePredicate } from '@/lib/table/query-builder/converters'
 import { validateStoragePredicate } from '@/lib/table/query-builder/validate'
+import { resolveTableById } from '@/lib/table/resolver.server'
 import { getUserEntityPermissions } from '@/lib/workspaces/permissions/utils'
 import { getWorkspaceOrganizationId } from '@/lib/workspaces/utils'
 
@@ -194,7 +195,9 @@ interface TableAccessDenied {
 
 export type TableAccessCheck = TableAccessResult | TableAccessDenied
 
-export type AccessResult = { ok: true; table: TableDefinition } | { ok: false; status: 404 | 403 }
+export type AccessResult =
+  | { ok: true; table: TableDefinition }
+  | { ok: false; status: 403 | 404 | 423 }
 
 interface ApiErrorResponse {
   error: string
@@ -248,24 +251,38 @@ export async function checkAccess(
   userId: string,
   level: 'read' | 'write' | 'admin' = 'read'
 ): Promise<AccessResult> {
-  const table = await getTableById(tableId)
-
+  const table = await resolveTableById(tableId)
   if (!table) {
     return { ok: false, status: 404 }
   }
 
   const permission = await getUserEntityPermissions(userId, 'workspace', table.workspaceId)
   const hasAccess = permissionSatisfies(permission, level)
+  if (!hasAccess) return { ok: false, status: 403 }
+  if (
+    level !== 'read' &&
+    table.locks.schemaLocked &&
+    table.locks.insertLocked &&
+    table.locks.updateLocked &&
+    table.locks.deleteLocked
+  ) {
+    return { ok: false, status: 423 }
+  }
 
-  return hasAccess ? { ok: true, table } : { ok: false, status: 403 }
+  return { ok: true, table }
 }
 
 export function accessError(
-  result: { ok: false; status: 404 | 403 },
+  result: { ok: false; status: 403 | 404 | 423 },
   requestId: string,
   context?: string
 ): NextResponse {
-  const message = result.status === 404 ? 'Table not found' : 'Access denied'
+  const message =
+    result.status === 404
+      ? 'Table not found'
+      : result.status === 423
+        ? 'This table is locked and can’t be changed.'
+        : 'Access denied'
   logger.warn(`[${requestId}] ${message}${context ? `: ${context}` : ''}`)
   return NextResponse.json({ error: message }, { status: result.status })
 }

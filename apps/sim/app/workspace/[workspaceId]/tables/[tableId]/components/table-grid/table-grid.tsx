@@ -477,6 +477,7 @@ export function TableGrid({
     tableData,
     isLoadingTable,
     rows,
+    rowsError,
     rowTotal,
     isLoadingRows,
     fetchNextPage,
@@ -496,6 +497,11 @@ export function TableGrid({
     // (and one the server rejects outright).
     filter: effectiveFilter,
   } = useTable({ workspaceId, tableId, queryOptions })
+
+  useEffect(() => {
+    if (!rowsError) return
+    toast.error(getErrorMessage(rowsError, 'Failed to load table rows'), { duration: 5000 })
+  }, [rowsError])
 
   const { data: tableRunState } = useTableRunState(tableId)
   const activeDispatches = tableRunState?.dispatches
@@ -2193,7 +2199,7 @@ export function TableGrid({
       // that silently refuses to save. Only for users who could otherwise edit:
       // without write access the lock isn't why they can't, and they still get
       // the read-only expanded viewer below.
-      if (canEditRef.current && updateLockedRef.current) {
+      if (canEditRef.current && updateLockedRef.current && column?.type !== 'json') {
         onBlockedActionRef.current('edit-cell')
         return
       }
@@ -4131,7 +4137,9 @@ export function TableGrid({
                             workflows={workflows}
                             workflowGroups={tableWorkflowGroups}
                             sourceInfo={columnSourceInfo.get(column.key)}
-                            onOpenConfig={handleConfigureColumn}
+                            onOpenConfig={
+                              canMutateSchema ? handleConfigureColumn : handleBlockedAddColumn
+                            }
                             onViewWorkflow={handleViewWorkflow}
                             isPinned={colIsPinned}
                             onPinToggle={userPermissions.canEdit ? handlePinToggle : undefined}

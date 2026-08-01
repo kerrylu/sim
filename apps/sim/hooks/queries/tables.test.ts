@@ -364,6 +364,7 @@ describe('tableRowsInfiniteOptions', () => {
       sort: sort as never,
     }) as {
       queryKey: readonly unknown[]
+      placeholderData?: unknown
       getNextPageParam: (
         lastPage: PageFixture,
         allPages: PageFixture[],
@@ -371,6 +372,10 @@ describe('tableRowsInfiniteOptions', () => {
       ) => number | { orderKey: string; id: string } | undefined
     }
   }
+
+  it('keeps the previous rows visible while a changed sort or filter is loading', () => {
+    expect(makeOpts()).toHaveProperty('placeholderData')
+  })
 
   function makePage(count: number, totalCount: number | null, startAt = 0, withOrderKey = false) {
     return {

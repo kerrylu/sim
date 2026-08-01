@@ -507,6 +507,7 @@ export function tableRowsInfiniteOptions({
     getNextPageParam: (_lastPage, allPages): TableRowsPageParam | undefined =>
       getNextTableRowsPageParam(allPages, Boolean(sort)),
     staleTime: TABLE_ROWS_STALE_TIME,
+    placeholderData: keepPreviousData,
   })
 }
 

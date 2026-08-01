@@ -206,6 +206,7 @@ const having = chainSpy()
 const forClause = chainSpy()
 const innerJoin = chainSpy()
 const leftJoin = chainSpy()
+const asAlias = chainSpy()
 const insert = chainSpy()
 const update = chainSpy()
 const set = chainSpy()
@@ -285,6 +286,7 @@ const joinBuilder = (tables: unknown[]): any => {
   builder.where = spyOrDefault(where, () => terminalBuilder(getRows))
   builder.innerJoin = spyOrDefault(innerJoin, (table: unknown) => joinBuilder([...tables, table]))
   builder.leftJoin = spyOrDefault(leftJoin, (table: unknown) => joinBuilder([...tables, table]))
+  builder.as = spyOrDefault(asAlias, () => tables[0])
   return builder
 }
 
@@ -310,6 +312,7 @@ export const dbChainMockFns = {
   returning,
   innerJoin,
   leftJoin,
+  as: asAlias,
   groupBy,
   having,
   execute,
