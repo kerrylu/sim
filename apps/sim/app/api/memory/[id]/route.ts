@@ -13,6 +13,7 @@ import { parseRequest } from '@/lib/api/server'
 import { checkInternalAuth } from '@/lib/auth/hybrid'
 import { generateRequestId } from '@/lib/core/utils/request'
 import { withRouteHandler } from '@/lib/core/utils/with-route-handler'
+import { fireMemoryTableTrigger } from '@/lib/virtual-tables/memory-virtual-table.server'
 import { checkWorkspaceAccess } from '@/lib/workspaces/permissions/utils'
 
 const logger = createLogger('MemoryByIdAPI')
@@ -241,6 +242,7 @@ export const PUT = withRouteHandler(async (request: NextRequest, context: Memory
       .limit(1)
 
     const mem = updatedMemories[0]
+    void fireMemoryTableTrigger(mem, existingMemories[0], requestId)
 
     logger.info(`[${requestId}] Memory updated: ${id} for workspace: ${validatedWorkspaceId}`)
     return NextResponse.json(

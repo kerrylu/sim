@@ -10,9 +10,11 @@ import {
   getMemoryTableId,
   isMemoryTableId,
   MEMORY_TABLE_COLUMNS,
+  MEMORY_TABLE_NAME,
   MEMORY_TABLE_SCHEMA,
   mapMemoryRecordToTableRow,
 } from '@/lib/virtual-tables/memory-virtual-table'
+import { fireVirtualTableTrigger } from '@/lib/virtual-tables/virtual-table-trigger.server'
 
 interface QueryMemoryTableRowsInput extends QueryOptions {
   workspaceId: string
@@ -20,6 +22,11 @@ interface QueryMemoryTableRowsInput extends QueryOptions {
 
 const MEMORY_TABLE_ID_PREFIX = getMemoryTableId('')
 const MEMORY_ROWS_SQL_NAME = 'memory_rows'
+
+type MemoryTableTriggerRecord = Pick<
+  typeof memory.$inferSelect,
+  'id' | 'workspaceId' | 'key' | 'data' | 'createdAt' | 'updatedAt' | 'deletedAt'
+>
 
 function referencesMemoryTranscript(value: unknown): boolean {
   if (Array.isArray(value)) return value.some(referencesMemoryTranscript)
@@ -197,4 +204,35 @@ export async function queryMemoryTableRows({
     totalCount: totalRows ? Number(totalRows[0].value) : null,
     keysetValid: !sort,
   }
+}
+export async function fireMemoryTableTrigger(
+  currentRecord: MemoryTableTriggerRecord,
+  previousRecord: MemoryTableTriggerRecord | null,
+  requestId: string
+): Promise<void> {
+  if (currentRecord.deletedAt) return
+
+  const toTableRow = (record: MemoryTableTriggerRecord) =>
+    mapMemoryRecordToTableRow({
+      id: record.id,
+      key: record.key,
+      data: record.data as JsonValue,
+      messageCount: Array.isArray(record.data) ? record.data.length : 0,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+    })
+  const currentRow = toTableRow(currentRecord)
+  const previousRow = previousRecord ? toTableRow(previousRecord) : null
+
+  await fireVirtualTableTrigger({
+    table: {
+      id: getMemoryTableId(currentRecord.workspaceId),
+      name: MEMORY_TABLE_NAME,
+      schema: MEMORY_TABLE_SCHEMA,
+    },
+    eventType: previousRecord ? 'update' : 'insert',
+    rows: [currentRow],
+    previousRows: previousRow ? new Map([[currentRow.id, previousRow.data]]) : null,
+    requestId,
+  })
 }

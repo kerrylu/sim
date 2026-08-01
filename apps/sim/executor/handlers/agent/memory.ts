@@ -5,6 +5,7 @@ import { generateId } from '@sim/utils/id'
 import { and, eq, sql } from 'drizzle-orm'
 import { redactObjectStrings } from '@/lib/logs/execution/pii-redaction'
 import { getAccurateTokenCount } from '@/lib/tokenization/estimators'
+import { fireMemoryTableTrigger } from '@/lib/virtual-tables/memory-virtual-table.server'
 import { MEMORY } from '@/executor/constants'
 import type { AgentInputs, Message } from '@/executor/handlers/agent/types'
 import type { ExecutionContext } from '@/executor/types'
@@ -66,7 +67,12 @@ export class Memory {
 
     const key = inputs.conversationId!
 
-    await this.appendMessage(workspaceId, key, message)
+    await this.appendMessage(
+      workspaceId,
+      key,
+      message,
+      ctx.metadata.requestId ?? ctx.executionId ?? ctx.workflowId
+    )
 
     logger.debug('Appended message to memory', {
       workspaceId,
@@ -110,7 +116,12 @@ export class Memory {
       messagesToStore.map((message) => this.maskContentForStorage(ctx, message))
     )
 
-    await this.seedMemoryRecord(workspaceId, key, messagesToStore)
+    await this.seedMemoryRecord(
+      workspaceId,
+      key,
+      messagesToStore,
+      ctx.metadata.requestId ?? ctx.executionId ?? ctx.workflowId
+    )
 
     logger.debug('Seeded memory', {
       workspaceId,
@@ -227,13 +238,14 @@ export class Memory {
   private async seedMemoryRecord(
     workspaceId: string,
     key: string,
-    messages: Message[]
+    messages: Message[],
+    requestId: string
   ): Promise<void> {
     const now = new Date()
 
     const sanitizedMessages = messages.map((message) => this.sanitizeMessageForStorage(message))
 
-    await db
+    const insertedRecords = await db
       .insert(memory)
       .values({
         id: generateId(),
@@ -244,14 +256,31 @@ export class Memory {
         updatedAt: now,
       })
       .onConflictDoNothing()
+      .returning()
+
+    const insertedRecord = insertedRecords[0]
+    if (insertedRecord) {
+      void fireMemoryTableTrigger(insertedRecord, null, requestId)
+    }
   }
 
-  private async appendMessage(workspaceId: string, key: string, message: Message): Promise<void> {
+  private async appendMessage(
+    workspaceId: string,
+    key: string,
+    message: Message,
+    requestId: string
+  ): Promise<void> {
     const now = new Date()
 
     const sanitizedMessage = this.sanitizeMessageForStorage(message)
 
-    await db
+    const previousRecords = await db
+      .select()
+      .from(memory)
+      .where(and(eq(memory.workspaceId, workspaceId), eq(memory.key, key)))
+      .limit(1)
+
+    const updatedRecords = await db
       .insert(memory)
       .values({
         id: generateId(),
@@ -268,6 +297,12 @@ export class Memory {
           updatedAt: now,
         },
       })
+      .returning()
+
+    const updatedRecord = updatedRecords[0]
+    if (updatedRecord) {
+      void fireMemoryTableTrigger(updatedRecord, previousRecords[0] ?? null, requestId)
+    }
   }
 
   private parsePositiveInt(value: string | undefined, defaultValue: number): number {

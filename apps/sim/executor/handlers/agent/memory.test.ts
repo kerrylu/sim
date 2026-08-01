@@ -1,7 +1,17 @@
+import { dbChainMockFns, resetDbChainMock } from '@sim/testing'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { MEMORY } from '@/executor/constants'
 import { Memory } from '@/executor/handlers/agent/memory'
 import type { Message } from '@/executor/handlers/agent/types'
+import type { ExecutionContext } from '@/executor/types'
+
+const { mockFireMemoryTableTrigger } = vi.hoisted(() => ({
+  mockFireMemoryTableTrigger: vi.fn(),
+}))
+
+vi.mock('@/lib/virtual-tables/memory-virtual-table.server', () => ({
+  fireMemoryTableTrigger: mockFireMemoryTableTrigger,
+}))
 
 vi.mock('@/lib/tokenization/estimators', () => ({
   getAccurateTokenCount: vi.fn((text: string) => {
@@ -13,7 +23,44 @@ describe('Memory', () => {
   let memoryService: Memory
 
   beforeEach(() => {
+    vi.clearAllMocks()
+    resetDbChainMock()
     memoryService = new Memory()
+  })
+
+  it('fires an update trigger when appending to an existing virtual-table row', async () => {
+    const previousRecord = {
+      id: 'memory-1',
+      workspaceId: 'workspace-1',
+      key: 'conversation-1',
+      data: [{ role: 'user', content: 'Hello' }],
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+      deletedAt: null,
+    }
+    const updatedRecord = {
+      ...previousRecord,
+      data: [...previousRecord.data, { role: 'assistant', content: 'Hi' }],
+      updatedAt: new Date('2026-01-02T00:00:00.000Z'),
+    }
+    dbChainMockFns.limit.mockResolvedValueOnce([previousRecord])
+    dbChainMockFns.returning.mockResolvedValueOnce([updatedRecord])
+
+    await memoryService.appendToMemory(
+      {
+        workspaceId: 'workspace-1',
+        executionId: 'execution-1',
+        metadata: { requestId: 'request-1' },
+      } as ExecutionContext,
+      { memoryType: 'conversation', conversationId: 'conversation-1' },
+      { role: 'assistant', content: 'Hi' }
+    )
+
+    expect(mockFireMemoryTableTrigger).toHaveBeenCalledWith(
+      updatedRecord,
+      previousRecord,
+      'request-1'
+    )
   })
 
   describe('applyWindow (message-based)', () => {

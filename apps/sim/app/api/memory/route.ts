@@ -15,6 +15,7 @@ import { parseRequest } from '@/lib/api/server'
 import { checkInternalAuth } from '@/lib/auth/hybrid'
 import { generateRequestId } from '@/lib/core/utils/request'
 import { withRouteHandler } from '@/lib/core/utils/with-route-handler'
+import { fireMemoryTableTrigger } from '@/lib/virtual-tables/memory-virtual-table.server'
 import { checkWorkspaceAccess } from '@/lib/workspaces/permissions/utils'
 
 const logger = createLogger('MemoryAPI')
@@ -181,6 +182,12 @@ export const POST = withRouteHandler(async (request: NextRequest) => {
     const now = new Date()
     const id = `mem_${generateId().replace(/-/g, '')}`
 
+    const previousMemories = await db
+      .select()
+      .from(memory)
+      .where(and(eq(memory.key, key), eq(memory.workspaceId, workspaceId)))
+      .limit(1)
+
     const { sql } = await import('drizzle-orm')
 
     await db
@@ -219,6 +226,7 @@ export const POST = withRouteHandler(async (request: NextRequest) => {
     }
 
     const memoryRecord = allMemories[0]
+    void fireMemoryTableTrigger(memoryRecord, previousMemories[0] ?? null, requestId)
 
     return NextResponse.json(
       { success: true, data: { conversationId: memoryRecord.key, data: memoryRecord.data } },

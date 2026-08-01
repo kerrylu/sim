@@ -2,6 +2,7 @@
 import type { JsonValue, TableDefinition, TableRow, TableSchema } from '@/lib/table/types'
 
 const MEMORY_TABLE_ID_PREFIX = 'system_memory_'
+export const MEMORY_TABLE_NAME = 'Memory'
 
 export const MEMORY_TABLE_COLUMNS = {
   conversationId: 'conversation_id',
@@ -91,7 +92,7 @@ export function createMemoryTableDefinition({
   return {
     id: getMemoryTableId(workspace.id),
     isVirtual: true,
-    name: 'Memory',
+    name: MEMORY_TABLE_NAME,
     description: 'Read-only agent conversation memory for this workspace',
     schema: MEMORY_TABLE_SCHEMA,
     metadata: null,
